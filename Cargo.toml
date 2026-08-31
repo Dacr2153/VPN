@@ -1,0 +1,113 @@
+[workspace]
+members = ["vpnd", "vpnctl"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["VPNForge Contributors"]
+license = "MIT"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec", "io"] }
+
+# gRPC / Protobuf
+tonic = { version = "0.12", features = ["transport", "tls"] }
+prost = "0.13"
+tonic-build = "0.12"
+
+# Crypto
+ring = "0.17"
+x25519-dalek = { version = "=2.0.0-rc.3", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+aes-gcm = "0.10"
+rand = "0.8"
+rand_core = "0.6"
+zeroize = { version = "1", features = ["derive"] }
+blake2 = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+hkdf = "0.12"
+# Argon2id KDF for passphrase-based encryption (RFC 9106)
+argon2 = { version = "0.5", features = ["std"] }
+# Ed25519 signatures: provided by `ring` (already a dep) — no extra crate needed.
+# Hickory (formerly trust-dns): pure-Rust async DNS resolver with DoT/DoH
+hickory-resolver = { version = "0.24", features = ["dns-over-rustls", "dns-over-https-rustls", "tokio-runtime"] }
+hickory-proto = "0.24"
+hickory-server = { version = "0.24", features = ["resolver"] }
+
+# WireGuard userspace
+boringtun = "0.6"
+
+# TLS
+rustls = { version = "0.23", features = ["ring"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+webpki-roots = "0.26"
+
+# TUN/TAP
+tun = { version = "0.6", features = ["async"] }
+
+# Networking / Routing (Linux)
+rtnetlink = "0.14"
+netlink-packet-route = "0.19"
+netlink-sys = "0.8"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+
+# Terminal UI
+colored = "2"
+indicatif = "0.17"
+dialoguer = "0.11"
+crossterm = "0.28"
+ctrlc = "3"
+
+# Utilities
+bytes = "1"
+dashmap = "6"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+crossbeam-queue = "0.3"
+once_cell = "1"
+thiserror = "2"
+anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+base64 = "0.22"
+ipnetwork = "0.20"
+socket2 = { version = "0.5", features = ["all"] }
+nix = { version = "0.29", features = ["net", "user", "process", "signal", "ioctl"] }
+libc = "0.2"
+dirs-next = "2"
+async-trait = "0.1"
+futures = "0.3"
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

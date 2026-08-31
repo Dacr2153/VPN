@@ -1,0 +1,50 @@
+# VPNForge — Client configuration
+# Copy to ~/.config/vpnforge/config.toml
+
+# ─────────────────────────────────────────────
+#  Daemon IPC
+# ─────────────────────────────────────────────
+[daemon]
+socket_path = "/run/vpnd/control.sock"
+daemonize   = false
+pid_file    = "/run/vpnd/vpnd.pid"
+
+# ─────────────────────────────────────────────
+#  Client settings
+# ─────────────────────────────────────────────
+[client]
+profiles_dir = "/etc/vpnforge/profiles"
+# auto_connect = "home-server"     # Connect on daemon start
+
+# ─────────────────────────────────────────────
+#  Reconnect policy
+# ─────────────────────────────────────────────
+[client.reconnect]
+enabled      = true
+base_delay   = 2       # seconds
+max_delay    = 60      # seconds (capped exponential backoff)
+max_attempts = 0       # 0 = unlimited
+
+# ─────────────────────────────────────────────
+#  Logging
+# ─────────────────────────────────────────────
+[logging]
+level    = "info"       # trace | debug | info | warn | error
+format   = "plain"      # plain | json
+# file   = "/var/log/vpnforge/vpnd.log"
+
+# ─────────────────────────────────────────────
+#  Example WireGuard profile
+#  Save individual profiles to [profiles_dir]/<name>.toml
+# ─────────────────────────────────────────────
+# [profile.home-server]
+# protocol     = "wireguard"
+# server_host  = "vpn.example.com"
+# server_port  = 51820
+# wg_private_key = "YOUR_PRIVATE_KEY_BASE64"
+# wg_peer_pubkey = "SERVER_PUBLIC_KEY_BASE64"
+# wg_preshared_key = ""          # optional
+# dns_server   = "1.1.1.1"
+# kill_switch  = true
+# split_tunnel = false
+# disable_ipv6 = false

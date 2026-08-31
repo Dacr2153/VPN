@@ -1,0 +1,27 @@
+# VPNForge — Example WireGuard profile
+# Save as /etc/vpnforge/profiles/home.toml
+# Or import with: vpnctl profile import ~/vpn.conf
+
+name        = "home-server"
+protocol    = "wireguard"
+server_host = "vpn.example.com"
+server_port = 51820
+
+# WireGuard keys (base64-encoded)
+# Generate with: vpnctl keygen
+wg_private_key  = "YOUR_PRIVATE_KEY_BASE64_HERE"
+wg_peer_pubkey  = "SERVER_PUBLIC_KEY_BASE64_HERE"
+wg_preshared_key = ""      # Optional pre-shared key for extra security
+
+# DNS & IP settings
+dns_server   = "1.1.1.1"
+disable_ipv6 = false
+
+# Security
+kill_switch  = true        # Block all traffic if VPN drops
+split_tunnel = false       # Route ALL traffic through VPN (false = full tunnel)
+# vpn_routes = ["10.0.0.0/8", "192.168.0.0/16"]  # Used only if split_tunnel = true
+
+# Advanced
+# virtual_ip   = ""        # Assigned by server; leave blank
+# mtu          = 1420      # 0 = auto-detect

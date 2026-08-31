@@ -1,0 +1,57 @@
+# VPNForge — Server (daemon) configuration
+# Copy to /etc/vpnforge/server.toml
+
+# ─────────────────────────────────────────────
+#  Daemon
+# ─────────────────────────────────────────────
+[daemon]
+socket_path  = "/run/vpnd/control.sock"
+daemonize    = true
+pid_file     = "/run/vpnd/vpnd.pid"
+run_as_user  = "vpnd"           # drop privileges after bind
+
+# ─────────────────────────────────────────────
+#  Logging
+# ─────────────────────────────────────────────
+[logging]
+level  = "info"
+format = "json"
+file   = "/var/log/vpnforge/vpnd.log"
+
+# ─────────────────────────────────────────────
+#  WireGuard server
+# ─────────────────────────────────────────────
+[server.wireguard]
+listen_port    = 51820
+private_key    = "/etc/vpnforge/server_wg.key"
+public_key     = "/etc/vpnforge/server_wg.pub"
+subnet         = "10.100.0.0/24"
+interface_name = "wg0"
+mtu            = 1420
+# peers = []  # Managed dynamically via SaveProfile RPC
+
+# ─────────────────────────────────────────────
+#  OpenVPN server (optional)
+# ─────────────────────────────────────────────
+[server.openvpn]
+listen_port = 1194
+protocol    = "udp"                # udp | tcp
+ca_cert     = "/etc/vpnforge/ca.crt"
+server_cert = "/etc/vpnforge/server.crt"
+server_key  = "/etc/vpnforge/server.key"
+dh_params   = "/etc/vpnforge/dh2048.pem"
+subnet      = "10.101.0.0/24"
+cipher      = "AES-256-GCM"
+tls_version_min = "1.2"
+
+# ─────────────────────────────────────────────
+#  IPsec / IKEv2 (optional)
+# ─────────────────────────────────────────────
+[server.ipsec]
+listen_port   = 500
+nat_traversal = true              # enable UDP/4500
+auth_method   = "cert"            # cert | psk
+ca_cert       = "/etc/vpnforge/ca.crt"
+server_cert   = "/etc/vpnforge/server.crt"
+server_key    = "/etc/vpnforge/server.key"
+subnet        = "10.102.0.0/24"

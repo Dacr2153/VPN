@@ -1,0 +1,427 @@
+syntax = "proto3";
+
+package vpnd;
+
+option java_package = "com.vpnforge.proto";
+
+// ─────────────────────────────────────────────
+//  VPNForge Daemon gRPC Service
+// ─────────────────────────────────────────────
+
+service VpndService {
+    // Connection management
+    rpc ConnectVpn(ConnectRequest)     returns (ConnectResponse);
+    rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+    rpc GetStatus(Empty)              returns (StatusResponse);
+
+    // Metrics (server-streaming for real-time updates)
+    rpc StreamMetrics(Empty)          returns (stream MetricsUpdate);
+
+    // Profile management
+    rpc ListProfiles(Empty)           returns (ProfileList);
+    rpc GetProfile(ProfileIdRequest)  returns (Profile);
+    rpc SaveProfile(Profile)          returns (SaveProfileResponse);
+    rpc DeleteProfile(ProfileIdRequest) returns (DeleteProfileResponse);
+    rpc ImportProfile(ImportRequest)  returns (SaveProfileResponse);
+    // Rotate the WireGuard preshared key (and optionally the static keypair).
+    // Returns the new public key + PSK so the user can update the server.
+    rpc RotateProfileKeys(RotateKeysRequest) returns (RotateKeysResponse);
+
+    // Diagnostics
+    rpc RunPingTest(PingRequest)      returns (stream PingResult);
+    rpc RunDnsLeakTest(Empty)         returns (DnsLeakResult);
+    rpc RunIpLeakTest(Empty)          returns (IpLeakResult);
+    rpc GetRouteTable(Empty)          returns (RouteTableResponse);
+
+    // Kill switch
+    rpc SetKillSwitch(KillSwitchRequest) returns (KillSwitchResponse);
+    rpc GetKillSwitchStatus(Empty)       returns (KillSwitchResponse);
+
+    // ── Admin-only RPCs ──────────────────────
+    rpc GetSessions(Empty)            returns (SessionList);
+    rpc KickSession(SessionIdRequest) returns (KickSessionResponse);
+    rpc GetSystemHealth(Empty)        returns (SystemHealth);
+    rpc StreamSystemHealth(Empty)     returns (stream SystemHealth);
+    rpc StreamTopology(Empty)         returns (stream TopologyUpdate);
+    rpc GetAlerts(AlertFilter)        returns (AlertList);
+    rpc AcknowledgeAlert(AlertIdRequest) returns (AckAlertResponse);
+    rpc SetServerConfig(ServerConfig) returns (SetConfigResponse);
+    rpc GetServerConfig(Empty)        returns (ServerConfig);
+}
+
+// ─────────────────────────────────────────────
+//  Shared
+// ─────────────────────────────────────────────
+
+message Empty {}
+
+message ProfileIdRequest { string id = 1; }
+message SessionIdRequest { string id = 1; }
+message AlertIdRequest   { uint64 id = 1; }
+
+// ─────────────────────────────────────────────
+//  Connection
+// ─────────────────────────────────────────────
+
+message ConnectRequest {
+    string profile_id = 1;
+    bool   force      = 2;    // disconnect existing before connecting
+
+    // Optional passphrase to unseal the WireGuard private key when the
+    // profile uses Argon2id+AES-GCM at-rest encryption. Sent over the local
+    // Unix-socket gRPC channel only — never persisted by the daemon.
+    string passphrase = 3;
+}
+
+message ConnectResponse {
+    bool   success      = 1;
+    string error        = 2;
+    string virtual_ip   = 3;
+    string server_ip    = 4;
+    string protocol     = 5;
+}
+
+message DisconnectRequest {
+    string profile_id = 1;   // empty = disconnect all
+}
+
+message DisconnectResponse {
+    bool   success = 1;
+    string error   = 2;
+}
+
+message StatusResponse {
+    ConnectionState state          = 1;
+    string          profile_id     = 2;
+    string          profile_name   = 3;
+    string          virtual_ip     = 4;
+    string          server_ip      = 5;
+    string          protocol       = 6;
+    int64           connected_since = 7;  // Unix timestamp ms
+    string          server_country  = 8;
+    float           handshake_ms    = 9;
+    bool            kill_switch_active = 10;
+}
+
+enum ConnectionState {
+    DISCONNECTED  = 0;
+    CONNECTING    = 1;
+    CONNECTED     = 2;
+    RECONNECTING  = 3;
+    DISCONNECTING = 4;
+    ERROR         = 5;
+}
+
+// ─────────────────────────────────────────────
+//  Metrics
+// ─────────────────────────────────────────────
+
+message MetricsUpdate {
+    int64  rx_bytes_per_sec   = 1;
+    int64  tx_bytes_per_sec   = 2;
+    int64  rx_bytes_total     = 3;
+    int64  tx_bytes_total     = 4;
+    float  latency_ms         = 5;
+    float  packet_loss_pct    = 6;
+    int64  timestamp_ms       = 7;
+    int32  active_sessions    = 8;
+}
+
+// ─────────────────────────────────────────────
+//  Profiles
+// ─────────────────────────────────────────────
+
+message Profile {
+    string   id               = 1;
+    string   name             = 2;
+    string   server_host      = 3;     // hostname or IP
+    uint32   server_port      = 4;
+    Protocol protocol         = 5;
+    string   username         = 6;
+    string   password         = 7;     // encrypted at rest
+    bytes    ca_cert          = 8;
+    bytes    client_cert      = 9;
+    bytes    client_key       = 10;
+    bytes    wg_private_key   = 11;    // WireGuard private key (base64)
+    bytes    wg_peer_pubkey   = 12;    // WireGuard peer public key
+    string   wg_preshared_key = 13;    // WireGuard PSK (optional)
+    uint32   wg_keepalive     = 14;    // WireGuard persistent keepalive
+    bool     kill_switch      = 15;
+    bool     split_tunnel     = 16;
+    repeated string vpn_routes = 17;  // CIDR notation
+    repeated string exclude_routes = 18;
+    string   dns_server       = 19;
+    bool     ipv6_disabled    = 20;
+    string   created_at       = 21;
+    string   updated_at       = 22;
+    bool     auto_connect     = 23;
+    uint32   mtu              = 24;    // 0 = auto
+
+    // Argon2id+AES-256-GCM sealed envelope for the WireGuard private key.
+    // Format: "vpf1$<base64(salt|nonce|ct+tag)>".
+    // When non-empty, `wg_private_key` is ignored at connect time.
+    string   wg_private_key_sealed = 25;
+
+    // Optional passphrase for SaveProfile sealing (NOT persisted). When set
+    // together with a plaintext `wg_private_key`, the daemon will seal the
+    // key with Argon2id+AES-256-GCM and store *only* the sealed envelope.
+    string   passphrase = 26;
+}
+
+enum Protocol {
+    WIREGUARD  = 0;
+    OPENVPN    = 1;
+    IPSEC_IKEV2 = 2;
+}
+
+message ProfileList {
+    repeated Profile profiles = 1;
+}
+
+message SaveProfileResponse {
+    bool   success = 1;
+    string id      = 2;
+    string error   = 3;
+}
+
+message DeleteProfileResponse {
+    bool   success = 1;
+    string error   = 2;
+}
+
+message ImportRequest {
+    bytes  data     = 1;    // raw .ovpn/.conf file bytes
+    string format   = 2;    // "ovpn" | "wg" | "json"
+    string name     = 3;
+
+    // Optional passphrase. When non-empty, the parsed WireGuard private
+    // key is sealed with Argon2id+AES-256-GCM before being persisted.
+    // The passphrase is never stored on disk.
+    string passphrase = 4;
+}
+
+// ─────────────────────────────────────────────
+//  Diagnostics
+// ─────────────────────────────────────────────
+
+message PingRequest {
+    string host    = 1;
+    uint32 count   = 2;
+    uint32 timeout = 3;  // ms
+}
+
+message PingResult {
+    float  rtt_ms    = 1;
+    bool   success   = 2;
+    uint32 seq       = 3;
+    string error     = 4;
+    float  avg_ms    = 5;
+    float  loss_pct  = 6;
+}
+
+message DnsLeakResult {
+    bool            leaked          = 1;
+    repeated string dns_servers     = 2;
+    repeated string expected_servers = 3;
+    string          error           = 4;
+}
+
+message IpLeakResult {
+    bool   leaked        = 1;
+    string detected_ip   = 2;
+    string expected_ip   = 3;
+    string country       = 4;
+    bool   ipv6_leaked   = 5;
+    string detected_ipv6 = 6;
+    string error         = 7;
+}
+
+message RouteEntry {
+    string destination = 1;
+    string gateway     = 2;
+    string interface   = 3;
+    uint32 metric      = 4;
+}
+
+message RouteTableResponse {
+    repeated RouteEntry routes = 1;
+}
+
+// ─────────────────────────────────────────────
+//  Kill Switch
+// ─────────────────────────────────────────────
+
+message KillSwitchRequest {
+    bool   enabled    = 1;
+    string server_ip  = 2;
+    uint32 server_port = 3;
+    string protocol   = 4;
+}
+
+message KillSwitchResponse {
+    bool   active = 1;
+    string error  = 2;
+}
+
+// ─────────────────────────────────────────────
+//  Admin — Sessions
+// ─────────────────────────────────────────────
+
+message SessionInfo {
+    string id              = 1;
+    string peer_id         = 2;
+    string virtual_ip      = 3;
+    string real_ip         = 4;
+    string protocol        = 5;
+    int64  connected_since = 6;
+    int64  rx_bytes        = 7;
+    int64  tx_bytes        = 8;
+    float  latency_ms      = 9;
+    string geo_country     = 10;
+    string geo_city        = 11;
+    string username        = 12;
+}
+
+message SessionList {
+    repeated SessionInfo sessions = 1;
+    uint32 total                  = 2;
+}
+
+message KickSessionResponse {
+    bool   success = 1;
+    string error   = 2;
+}
+
+// ─────────────────────────────────────────────
+//  Admin — System Health
+// ─────────────────────────────────────────────
+
+message SystemHealth {
+    float  cpu_percent        = 1;
+    int64  memory_used_bytes  = 2;
+    int64  memory_total_bytes = 3;
+    int64  rx_bytes_per_sec   = 4;
+    int64  tx_bytes_per_sec   = 5;
+    uint32 active_sessions    = 6;
+    int64  uptime_seconds     = 7;
+    string version            = 8;
+    float  load_avg_1m        = 9;
+    float  load_avg_5m        = 10;
+    int64  timestamp_ms       = 11;
+}
+
+// ─────────────────────────────────────────────
+//  Admin — Topology
+// ─────────────────────────────────────────────
+
+message TopologyNode {
+    string id          = 1;
+    string label       = 2;
+    string ip          = 3;
+    string node_type   = 4;  // "server" | "client"
+    string protocol    = 5;
+    string country     = 6;
+    float  latency_ms  = 7;
+    bool   active      = 8;
+}
+
+message TopologyEdge {
+    string source      = 1;
+    string target      = 2;
+    float  bandwidth   = 3;
+    float  latency_ms  = 4;
+    bool   healthy     = 5;
+}
+
+message TopologyUpdate {
+    repeated TopologyNode nodes = 1;
+    repeated TopologyEdge edges = 2;
+    int64                 timestamp_ms = 3;
+}
+
+// ─────────────────────────────────────────────
+//  Admin — Alerts
+// ─────────────────────────────────────────────
+
+enum AlertSeverity {
+    INFO     = 0;
+    WARNING  = 1;
+    CRITICAL = 2;
+}
+
+message Alert {
+    uint64        id          = 1;
+    AlertSeverity severity    = 2;
+    string        category    = 3;   // "security" | "performance" | "system"
+    string        message     = 4;
+    string        details     = 5;
+    int64         timestamp_ms = 6;
+    bool          acknowledged = 7;
+    string        session_id   = 8;  // optional
+}
+
+message AlertFilter {
+    repeated AlertSeverity severities = 1;
+    bool   unacknowledged_only        = 2;
+    uint32 limit                      = 3;
+}
+
+message AlertList {
+    repeated Alert alerts = 1;
+}
+
+message AckAlertResponse {
+    bool   success = 1;
+    string error   = 2;
+}
+
+// ─────────────────────────────────────────────
+//  Admin — Server Config
+// ─────────────────────────────────────────────
+
+message ServerConfig {
+    string listen_address     = 1;
+    uint32 wireguard_port     = 2;
+    uint32 openvpn_port       = 3;
+    uint32 ipsec_port         = 4;
+    string server_subnet      = 5;
+    string dns_server         = 6;
+    uint32 max_clients        = 7;
+    bool   enable_wireguard   = 8;
+    bool   enable_openvpn     = 9;
+    bool   enable_ipsec       = 10;
+    uint32 mtu                = 11;
+    bool   nat_enabled        = 12;
+    string nat_interface      = 13;
+}
+
+message SetConfigResponse {
+    bool   success = 1;
+    string error   = 2;
+}
+
+// ─────────────────────────────────────────────
+//  Key rotation (Phase 2.5/2.6)
+// ─────────────────────────────────────────────
+
+message RotateKeysRequest {
+    // Profile to rotate keys for
+    string profile_id = 1;
+    // When true, also rotate the static WireGuard keypair (in addition to
+    // the preshared key). The new public key MUST be added to the server
+    // before the next connect attempt or it will fail.
+    bool   rotate_static_keypair = 2;
+    // Optional passphrase to seal the new private key (Argon2id+AES-GCM).
+    // When empty, the existing sealing state is preserved.
+    string passphrase = 3;
+}
+
+message RotateKeysResponse {
+    bool   success           = 1;
+    string error             = 2;
+    // New public key (base64) — give this to the server admin if static
+    // keys were rotated. Empty when only the PSK was rotated.
+    string new_public_key    = 3;
+    // New preshared key (base64). Add this to the server's [Peer] section.
+    string new_preshared_key = 4;
+}

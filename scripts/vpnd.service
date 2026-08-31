@@ -1,0 +1,40 @@
+[Unit]
+Description=VPNForge Daemon (vpnd)
+Documentation=https://github.com/vpnforge/vpnforge
+After=network-online.target
+Wants=network-online.target
+ConditionFileIsExecutable=/usr/local/sbin/vpnd
+
+[Service]
+Type=notify
+ExecStart=/usr/local/sbin/vpnd --config /etc/vpnforge/server.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=15s
+
+# Runtime directory for Unix socket
+RuntimeDirectory=vpnd
+RuntimeDirectoryMode=0750
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vpnd
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/etc/resolv.conf /run/vpnd /var/log/vpnforge
+# Network namespace access (required for TUN/TAP and nftables)
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+PrivateTmp=yes
+PrivateDevices=no      # needs /dev/net/tun
+DeviceAllow=/dev/net/tun rwm
+
+[Install]
+WantedBy=multi-user.target
